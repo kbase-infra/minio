@@ -1,0 +1,31 @@
+FROM golang:1.24-alpine AS minio-builder
+
+ARG GIT_REPO=https://github.com/kbase-infra/minio.git
+ARG GIT_REF=master
+
+WORKDIR /build
+
+# Clone and checkout specific commit/tag
+RUN apk add --no-cache git && \
+    git clone ${GIT_REPO} . && \
+    git checkout ${GIT_REF}
+
+# Build MinIO
+RUN CGO_ENABLED=0 go build -tags kqueue -trimpath -o /minio
+
+FROM alpine:latest
+
+RUN apk add --no-cache ca-certificates curl
+
+COPY --from=minio-builder /minio /minio
+
+RUN chmod +x /minio
+
+USER 1000:1000
+
+HEALTHCHECK --interval=10s --timeout=10s --start-period=5s --retries=9 \
+    CMD curl -f http://localhost:9000/minio/health/live || exit 1
+
+EXPOSE 9000 9001
+
+ENTRYPOINT ["/minio"]
