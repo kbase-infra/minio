@@ -1,0 +1,85 @@
+name: Build MinIO Docker Image
+
+on:
+  release:
+    types: [created, published]
+  workflow_dispatch:
+    inputs:
+      git_ref:
+        description: 'Git tag or commit to build (e.g., 9e49d5e)'
+        required: true
+        type: string
+      docker_tag:
+        description: 'Docker tag (leave empty to auto-generate from git_ref)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine build parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            GIT_REF="${{ github.event.release.tag_name }}"
+          else
+            GIT_REF="${{ inputs.git_ref }}"
+          fi
+          echo "git_ref=$GIT_REF" >> $GITHUB_OUTPUT
+
+          if [ -n "${{ inputs.docker_tag }}" ]; then
+            DOCKER_TAG="${{ inputs.docker_tag }}"
+          else
+            DOCKER_TAG="ghcr.io/${{ github.repository }}:$GIT_REF"
+          fi
+          echo "docker_tag=$DOCKER_TAG" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.build
+          push: true
+          tags: ${{ steps.params.outputs.docker_tag }}
+          build-args: |
+            GIT_REPO=https://github.com/${{ github.repository }}.git
+            GIT_REF=${{ steps.params.outputs.git_ref }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build summary
+        run: |
+          echo "### Build Summary :rocket:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Git Reference**: \`${{ steps.params.outputs.git_ref }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Docker Tag**: \`${{ steps.params.outputs.docker_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repository**: \`${{ github.repository }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Pull the image:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker pull ${{ steps.params.outputs.docker_tag }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "#### Run MinIO:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -p 9000:9000 -p 9001:9001 ${{ steps.params.outputs.docker_tag }} server /data --console-address ':9001'" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
