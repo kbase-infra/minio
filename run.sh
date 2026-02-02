@@ -1,0 +1,1 @@
+podman run minio:latest
