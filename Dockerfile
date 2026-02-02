@@ -34,8 +34,8 @@ RUN /usr/bin/minio --version
 RUN curl -sL https://dl.min.io/client/mc/release/linux-$(go env GOARCH)/mc -o /usr/bin/mc && \
     chmod +x /usr/bin/mc
 
-RUN chmod +x dockerscripts/download-static-curl.sh && \
-    ./dockerscripts/download-static-curl.sh
+RUN curl -fsSL "https://github.com/moparisthebest/static-curl/releases/download/v8.17.0/curl-amd64" -o /go/bin/curl && \
+    chmod +x /go/bin/curl
 
 FROM registry.access.redhat.com/ubi9/ubi-micro:latest
 
